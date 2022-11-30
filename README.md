@@ -5,13 +5,13 @@
 The command-line tool:
 
 ```
-go get github.com/tkrajina/typescriptify-golang-structs/tscriptify
+go get github.com/chaintraced/typescriptify-golang-structs/tscriptify
 ```
 
 The library:
 
 ```
-go get github.com/tkrajina/typescriptify-golang-structs
+go get github.com/chaintraced/typescriptify-golang-structs
 ```
 
 ## Usage
@@ -305,7 +305,7 @@ If you only want to change `ts_transform` but not `ts_type`, you can pass an emp
 
 ## Enums
 
-There are two ways to create enums. 
+There are two ways to create enums.
 
 ### Enums with TSName()
 
@@ -393,4 +393,3 @@ export class Holliday {
 ## License
 
 This library is licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)
-

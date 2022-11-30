@@ -31,7 +31,7 @@ import (
 	"fmt"
 
 	m "{{ .ModelsPackage }}"
-	"github.com/tkrajina/typescriptify-golang-structs/typescriptify"
+	"github.com/chaintraced/typescriptify-golang-structs/typescriptify"
 )
 
 func main() {
