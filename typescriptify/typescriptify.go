@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
@@ -85,6 +86,7 @@ type TypeScriptify struct {
 	CreateConstructor bool
 	BackupDir         string // If empty no backup
 	DontExport        bool
+	Configuration     Configuration
 	CreateInterface   bool
 	customImports     []string
 
@@ -99,8 +101,42 @@ type TypeScriptify struct {
 	alreadyConverted map[reflect.Type]bool
 }
 
+type Configuration struct {
+	//GenericStructToFieldMapping maps generic structures (including package name depending on usage) that should be replace by one of it's fields
+	// the key is the struct to look for, while the value is the field of that struct we should replace it with. See more in readme.
+	//
+	// Given the following code, we would map it like `GenericStructToFieldMapping: map[string]string{"typescriptify.GenericField": "value"},`
+	//
+	//	type GenericField[T any] struct {
+	// 		value T
+	// 		IsSet bool `json:"-"` // Set means the value has been set
+	// 	}
+	// 	type Dummy struct {
+	//  	 Greeting string `json:"greeting"`
+	// 	}
+	// 	type GenericAddress struct {
+	// 		GenDummy GenericField[Dummy]   `json:"genDummy,omitempty"`
+	// 	}
+	GenericStructToFieldMapping map[string]string
+}
+
+// GetChildFieldFromGenericParent returns empty string if not found
+func (c Configuration) GetChildFieldFromGenericParent(parentName string) string {
+	// If it's on the format pkg.Struct[...] then remove the [...] part
+	parentName = strings.Split(parentName, "[")[0]
+	for key, value := range c.GenericStructToFieldMapping {
+		if key == parentName {
+			return value
+		}
+	}
+	return ""
+}
+
+var DefaultConfiguration = Configuration{}
+
 func New() *TypeScriptify {
 	result := new(TypeScriptify)
+	result.Configuration = DefaultConfiguration
 	result.Indent = "\t"
 	result.BackupDir = "."
 
@@ -131,6 +167,16 @@ func New() *TypeScriptify {
 	result.CreateConstructor = true
 
 	return result
+}
+
+var genericStructRegex = regexp.MustCompile("[A-Za-z0-9_.]+\\[(.*)\\]") // will extract type from Generic field FieldEx[mypkg.Something]
+
+func isStructFieldGeneric(field reflect.StructField) bool {
+	return isStringOfGenericStruct(field.Type.Name())
+}
+
+func isStringOfGenericStruct(structName string) bool {
+	return genericStructRegex.MatchString(structName)
 }
 
 func deepFields(typeOf reflect.Type) []reflect.StructField {
@@ -554,7 +600,25 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type, customCode m
 	}
 	t.logf(depth, "Converting type %s", typeOf.String())
 
+	// childFieldName := t.Configuration.GetChildFieldFromGenericParent(typeOf.String())
+	// // Whenever `isGenericStructWithConfigMapping` is true, it means we want to write down nothing about the current type
+	// // instead we want this call to directly act on it's childField
+	// isGenericStructWithConfigMapping := typeOf.Kind() == reflect.Struct && isStringOfGenericStruct(typeOf.String()) && childFieldName != ""
+	// if isGenericStructWithConfigMapping {
+	// 	// We will use one of the child's type instead
+	// 	fields := deepFields(typeOf)
+	// 	for _, field := range fields {
+	// 		if field.Name == childFieldName && field.Type.Kind() == reflect.Struct {
+	// 			// TODO: Make sure we properly handle field
+	// 			return t.convertType(depth, field.Type, customCode)
+	// 		} else if field.Name == childFieldName {
+	// 			// If it's not a struct we don't need to do anything
+	// 			return "", nil
+	// 		}
+	// 	}
+	// } else {
 	t.alreadyConverted[typeOf] = true
+	// }
 
 	entityName := t.Prefix + typeOf.Name() + t.Suffix
 	result := ""
@@ -582,6 +646,23 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type, customCode m
 		jsonFieldName := t.getJSONFieldName(field, isPtr)
 		if len(jsonFieldName) == 0 || jsonFieldName == "-" {
 			continue
+		}
+
+		fieldType := field.Type
+		// Change of tactics, if the field is generic type, and we can find it's child-field we'll use that one here instead
+		childFieldName := t.Configuration.GetChildFieldFromGenericParent(fieldType.String())
+		// Whenever `isGenericStructWithConfigMapping` is true, it means we want to write down nothing about the current type
+		// instead we want this call to directly act on it's childField
+		isGenericStructWithConfigMapping := fieldType.Kind() == reflect.Struct && isStringOfGenericStruct(fieldType.String()) && childFieldName != ""
+		if isGenericStructWithConfigMapping {
+			// We will use one of the child's type instead
+			childFields := deepFields(fieldType)
+			for _, childField := range childFields {
+				if childField.Name == childFieldName {
+					field = childField
+					break
+				}
+			}
 		}
 
 		var err error
@@ -716,6 +797,115 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type, customCode m
 	return result, nil
 }
 
+func (t *TypeScriptify) convertTypeHandleField(field reflect.StructField, depth int, typeOf reflect.Type, customCode map[string]string, builder *typeScriptClassBuilder) (string, error) {
+	result := ""
+	isPtr := field.Type.Kind() == reflect.Ptr
+	if isPtr {
+		field.Type = field.Type.Elem()
+	}
+	jsonFieldName := t.getJSONFieldName(field, isPtr)
+	if len(jsonFieldName) == 0 || jsonFieldName == "-" {
+		return "", nil
+	}
+
+	var err error
+	fldOpts := t.getFieldOptions(typeOf, field)
+	if fldOpts.TSDoc != "" {
+		result += "\t/** " + fldOpts.TSDoc + " */\n"
+	}
+	if fldOpts.TSTransform != "" {
+		t.logf(depth, "- simple field %s.%s", typeOf.Name(), field.Name)
+		err = builder.AddSimpleField(jsonFieldName, field, fldOpts)
+	} else if _, isEnum := t.enums[field.Type]; isEnum {
+		t.logf(depth, "- enum field %s.%s", typeOf.Name(), field.Name)
+		builder.AddEnumField(jsonFieldName, field)
+	} else if fldOpts.TSType != "" { // Struct:
+		t.logf(depth, "- simple field %s.%s", typeOf.Name(), field.Name)
+		err = builder.AddSimpleField(jsonFieldName, field, fldOpts)
+	} else if field.Type.Kind() == reflect.Struct { // Struct:
+		t.logf(depth, "- struct %s.%s (%s)", typeOf.Name(), field.Name, field.Type.String())
+		typeScriptChunk, err := t.convertType(depth+1, field.Type, customCode)
+		if err != nil {
+			return "", err
+		}
+		if typeScriptChunk != "" {
+			result = typeScriptChunk + "\n" + result
+		}
+		builder.AddStructField(jsonFieldName, field)
+	} else if field.Type.Kind() == reflect.Map {
+		t.logf(depth, "- map field %s.%s", typeOf.Name(), field.Name)
+		// Also convert map key types if needed
+		var keyTypeToConvert reflect.Type
+		switch field.Type.Key().Kind() {
+		case reflect.Struct:
+			keyTypeToConvert = field.Type.Key()
+		case reflect.Ptr:
+			keyTypeToConvert = field.Type.Key().Elem()
+		}
+		if keyTypeToConvert != nil {
+			typeScriptChunk, err := t.convertType(depth+1, keyTypeToConvert, customCode)
+			if err != nil {
+				return "", err
+			}
+			if typeScriptChunk != "" {
+				result = typeScriptChunk + "\n" + result
+			}
+		}
+		// Also convert map value types if needed
+		var valueTypeToConvert reflect.Type
+		switch field.Type.Elem().Kind() {
+		case reflect.Struct:
+			valueTypeToConvert = field.Type.Elem()
+		case reflect.Ptr:
+			valueTypeToConvert = field.Type.Elem().Elem()
+		}
+		if valueTypeToConvert != nil {
+			typeScriptChunk, err := t.convertType(depth+1, valueTypeToConvert, customCode)
+			if err != nil {
+				return "", err
+			}
+			if typeScriptChunk != "" {
+				result = typeScriptChunk + "\n" + result
+			}
+		}
+
+		builder.AddMapField(jsonFieldName, field)
+	} else if field.Type.Kind() == reflect.Slice || field.Type.Kind() == reflect.Array { // Slice:
+		if field.Type.Elem().Kind() == reflect.Ptr { //extract ptr type
+			field.Type = field.Type.Elem()
+		}
+
+		arrayDepth := 1
+		for field.Type.Elem().Kind() == reflect.Slice { // Slice of slices:
+			field.Type = field.Type.Elem()
+			arrayDepth++
+		}
+
+		if field.Type.Elem().Kind() == reflect.Struct { // Slice of structs:
+			t.logf(depth, "- struct slice %s.%s (%s)", typeOf.Name(), field.Name, field.Type.String())
+			typeScriptChunk, err := t.convertType(depth+1, field.Type.Elem(), customCode)
+			if err != nil {
+				return "", err
+			}
+			if typeScriptChunk != "" {
+				result = typeScriptChunk + "\n" + result
+			}
+			builder.AddArrayOfStructsField(jsonFieldName, field, arrayDepth)
+		} else { // Slice of simple fields:
+			t.logf(depth, "- slice field %s.%s", typeOf.Name(), field.Name)
+			err = builder.AddSimpleArrayField(jsonFieldName, field, arrayDepth, fldOpts)
+		}
+	} else { // Simple field:
+		t.logf(depth, "- simple field %s.%s", typeOf.Name(), field.Name)
+		err = builder.AddSimpleField(jsonFieldName, field, fldOpts)
+	}
+	if err != nil {
+		return "", err
+	}
+
+	return result, nil
+}
+
 func (t *TypeScriptify) AddImport(i string) {
 	for _, cimport := range t.customImports {
 		if cimport == i {
@@ -788,6 +978,15 @@ func (t *typeScriptClassBuilder) AddEnumField(fieldName string, field reflect.St
 
 func (t *typeScriptClassBuilder) AddStructField(fieldName string, field reflect.StructField) {
 	fieldType := field.Type.Name()
+	if isStructFieldGeneric(field) {
+		// It's a generic field, change the Type
+		fieldType = genericStructRegex.FindStringSubmatch(fieldType)[1]
+		// if it's formatted `mypkg.Field` we want to remove the package name
+		if strings.Contains(fieldType, ".") {
+			fieldType = strings.Split(fieldType, ".")[1]
+		}
+	}
+
 	strippedFieldName := strings.ReplaceAll(fieldName, "?", "")
 	t.addField(fieldName, t.prefix+fieldType+t.suffix)
 	t.addInitializerFieldLine(strippedFieldName, fmt.Sprintf("this.convertValues(source[\"%s\"], %s)", strippedFieldName, t.prefix+fieldType+t.suffix))

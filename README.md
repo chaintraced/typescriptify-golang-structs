@@ -1,5 +1,13 @@
 # A Golang JSON to TypeScript model converter
 
+## Notice
+
+This is a fork of the https://github.com/tkrajina/typescriptify-golang-structs repository. We forked the repository due to it's low activity and our need to support a case in our codebase. We use a certain Generic structure to determine if the JSON was set or not in `POST`/`PATCH` API calls, this causes malformed typescript conversions if not handled correctly.
+
+We've added the possibility to set a configuration with currently only one field:
+
+- `GenericStructToFieldMapping` - A map containing relationships between generic structs and which field should replace it in the output. See example below on how to use it.
+
 ## Installation
 
 The command-line tool:
@@ -389,6 +397,73 @@ export class Holliday {
 	weekday: Weekday;
 }
 ```
+
+## GenericStructToFieldMapping explanation
+
+Given the following snippet of code, written to be able to determine if a field were set or not by the client. Without this modification it's not possible to know if the client purposely set a value to it's zero value or if it was omitted from the JSON.
+
+```golang
+type GenericField[T any] struct {
+	value T
+	IsSet bool `json:"-"` // Set means the value has been set
+}
+
+type Dummy struct {
+  Greeting string `json:"greeting"`
+}
+
+type GenericAddress struct {
+	// Used in html
+	GenDummy GenericField[Dummy]   `json:"genDummy,omitempty"`
+	GenField GenericField[string]  `json:"genField,omitempty"`
+	GenText1 GenericField[[]Dummy] `json:"genText,omitempty"`
+}
+```
+
+We do not want the typescript to look like so:
+
+```typescript
+interface GenericField[Dummy] {
+
+}
+interface GenericField[string] {
+
+}
+interface GenericField[[]Dummy] {
+
+}
+interface GenericAddress {
+  genDummy GenericField[Dummy]
+  genField GenericField[string]
+  genText GenericField[[]Dummy]
+}
+```
+
+But rather:
+
+```typescript
+interface Dummy {
+  greeting string
+}
+
+interface GenericAddress {
+  genDummy Dummy
+  genField string
+  genText []Dummy
+}
+
+```
+
+This can be achieved by setting a configuration with the `GenericStructToFieldMapping` flag after initializing the converter:
+
+```golang
+converter := New()
+converter.Configuration = Configuration{
+  GenericStructToFieldMapping: map[string]string{"typescriptify.GenericField": "value"},
+}
+```
+
+When we do this the generic struct (key) will be ignored in favor of it's field (value).
 
 ## License
 

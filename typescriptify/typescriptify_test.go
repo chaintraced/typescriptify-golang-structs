@@ -11,8 +11,28 @@ import (
 	"testing"
 	"time"
 
+	models "github.com/chaintraced/typescriptify-golang-structs/example/example-models"
 	"github.com/stretchr/testify/assert"
 )
+
+type GenericField[T any] struct {
+	value T
+	IsSet bool `json:"-"` // Set means the value has been set
+}
+
+type GenericAddress struct {
+	// Used in html
+	GenDummy GenericField[Dummy]   `json:"genDummy,omitempty"`
+	GenField models.Field[string]  `json:"genField,omitempty"`
+	GenText1 GenericField[[]Dummy] `json:"genText,omitempty"`
+	Duration float64               `json:"duration"`
+	Text1    []string              `json:"text,omitempty"`
+	// Ignored:
+	Text2    string               `json:",omitempty"`
+	Text3    string               `json:"-"`
+	GenText2 GenericField[string] `json:",omitempty"`
+	GenText3 GenericField[string] `json:"-"`
+}
 
 type Address struct {
 	// Used in html
@@ -39,6 +59,30 @@ type Person struct {
 	Metadata  string    `json:"metadata" ts_type:"{[key:string]:string}" ts_transform:"JSON.parse(__VALUE__ || \"{}\")"`
 	Friends   []*Person `json:"friends"`
 	Dummy     Dummy     `json:"a"`
+}
+
+func TestTypescriptifyWithGenericTypes(t *testing.T) {
+	t.Parallel()
+	converter := New()
+	converter.Configuration = Configuration{
+		GenericStructToFieldMapping: map[string]string{"models.Field": "Value", "typescriptify.GenericField": "value"},
+	}
+
+	converter.AddType(reflect.TypeOf(GenericAddress{}))
+	converter.CreateConstructor = false
+	converter.BackupDir = ""
+
+	desiredResult := `export class Dummy {
+        something: string;
+}
+export class GenericAddress {
+				genDummy?: Dummy;
+				genField?: string;
+				genText?: Dummy[];
+				duration: number;
+				text?: string[];
+}`
+	testConverter(t, converter, false, desiredResult, nil)
 }
 
 func TestTypescriptifyWithTypes(t *testing.T) {
@@ -262,9 +306,9 @@ func testConverter(t *testing.T, converter *TypeScriptify, strictMode bool, desi
 		panic(err.Error())
 	}
 
-	fmt.Println("----------------------------------------------------------------------------------------------------")
+	fmt.Println("Desired----------------------------------------------------------------------------------------------------")
 	fmt.Println(desiredResult)
-	fmt.Println("----------------------------------------------------------------------------------------------------")
+	fmt.Println("Generated----------------------------------------------------------------------------------------------------")
 	fmt.Println(typeScriptCode)
 	fmt.Println("----------------------------------------------------------------------------------------------------")
 
@@ -788,7 +832,7 @@ func TestMaps(t *testing.T) {
       export class API_Address {
           duration: number;
           text?: string;
-      
+
           constructor(source: any = {}) {
               if ('string' === typeof source) source = JSON.parse(source);
               this.duration = source["duration"];
@@ -864,7 +908,7 @@ func TestAnonymousPtr(t *testing.T) {
 	desiredResult := `
       export class PersonWithPtrName {
           name: string;
-      
+
           constructor(source: any = {}) {
               if ('string' === typeof source) source = JSON.parse(source);
               this.name = source["name"];
@@ -893,7 +937,7 @@ const converter = new Converter();
 class Address {
     street: string;
     number: number;
-    
+
     constructor(a: any) {
         this.street = a["street"];
         this.number = a["number"];
@@ -938,7 +982,7 @@ func TestIgnoredPTR(t *testing.T) {
 	desiredResult := `
       export class PersonWithIgnoredPtr {
           name: string;
-      
+
           constructor(source: any = {}) {
               if ('string' === typeof source) source = JSON.parse(source);
               this.name = source["name"];

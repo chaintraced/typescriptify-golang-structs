@@ -21,3 +21,7 @@ type Person struct {
 	Metadata     []byte       `json:"metadata" ts_type:"{[key:string]:string}"`
 	Friends      []*Person    `json:"friends"`
 }
+
+type Field[T any] struct {
+	Value T `json:"value"`
+}
