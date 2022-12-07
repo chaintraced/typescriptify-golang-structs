@@ -65,10 +65,9 @@ type Person struct {
 
 func TestTypescriptifyWithGenericTypes(t *testing.T) {
 	t.Parallel()
-	converter := New()
-	converter.Configuration = Configuration{
+	converter := New().WithConfiguration(Configuration{
 		GenericStructToFieldMapping: map[string]string{"models.Field": "Value", "typescriptify.GenericField": "value"},
-	}
+	})
 
 	converter.AddType(reflect.TypeOf(GenericAddress{}))
 	converter.CreateConstructor = false

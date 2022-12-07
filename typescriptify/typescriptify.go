@@ -230,6 +230,11 @@ func (t *TypeScriptify) ManageType(fld interface{}, opts TypeOptions) *TypeScrip
 	return t
 }
 
+func (t *TypeScriptify) WithConfiguration(config Configuration) *TypeScriptify {
+	t.Configuration = config
+	return t
+}
+
 func (t *TypeScriptify) WithCreateFromMethod(b bool) *TypeScriptify {
 	t.CreateFromMethod = b
 	return t
