@@ -639,15 +639,7 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type, customCode m
 
 	fields := deepFields(typeOf)
 	for _, field := range fields {
-		isPtr := field.Type.Kind() == reflect.Ptr
-		if isPtr {
-			field.Type = field.Type.Elem()
-		}
-		jsonFieldName := t.getJSONFieldName(field, isPtr)
-		if len(jsonFieldName) == 0 || jsonFieldName == "-" {
-			continue
-		}
-
+		originalField := field
 		fieldType := field.Type
 		// Change of tactics, if the field is generic type, and we can find it's child-field we'll use that one here instead
 		childFieldName := t.Configuration.GetChildFieldFromGenericParent(fieldType.String())
@@ -663,6 +655,15 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type, customCode m
 					break
 				}
 			}
+		}
+
+		isPtr := field.Type.Kind() == reflect.Ptr
+		if isPtr {
+			field.Type = field.Type.Elem()
+		}
+		jsonFieldName := t.getJSONFieldName(originalField, isPtr)
+		if len(jsonFieldName) == 0 || jsonFieldName == "-" {
+			continue
 		}
 
 		var err error

@@ -22,11 +22,13 @@ type GenericField[T any] struct {
 
 type GenericAddress struct {
 	// Used in html
-	GenDummy GenericField[Dummy]   `json:"genDummy,omitempty"`
-	GenField models.Field[string]  `json:"genField,omitempty"`
-	GenText1 GenericField[[]Dummy] `json:"genText,omitempty"`
-	Duration float64               `json:"duration"`
-	Text1    []string              `json:"text,omitempty"`
+	GenDummy      GenericField[Dummy]    `json:"genDummy,omitempty"`
+	GenField      models.Field[string]   `json:"genField"`
+	GenFieldPtr   models.Field[*string]  `json:"genFieldPtr,omitempty"`
+	GenFieldSlice models.Field[[]string] `json:"genFieldSlice,omitempty"`
+	GenText1      GenericField[[]Dummy]  `json:"genText,omitempty"`
+	Duration      GenericField[float64]  `json:"duration"`
+	Text1         []string               `json:"text,omitempty"`
 	// Ignored:
 	Text2    string               `json:",omitempty"`
 	Text3    string               `json:"-"`
@@ -77,7 +79,9 @@ func TestTypescriptifyWithGenericTypes(t *testing.T) {
 }
 export class GenericAddress {
 				genDummy?: Dummy;
-				genField?: string;
+				genField: string;
+				genFieldPtr?: string;
+				genFieldSlice?: string[];
 				genText?: Dummy[];
 				duration: number;
 				text?: string[];
