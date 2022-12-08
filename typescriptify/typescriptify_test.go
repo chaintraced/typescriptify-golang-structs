@@ -63,6 +63,21 @@ type Person struct {
 	Dummy     Dummy     `json:"a"`
 }
 
+func TestTypescriptifyWithDuplicateNames(t *testing.T) {
+	t.Parallel()
+	converter := New().WithConfiguration(Configuration{
+		ErrorOnDuplicateNames: true,
+	})
+
+	converter.AddType(reflect.TypeOf(Person{})).AddType(reflect.TypeOf(models.Person{}))
+	converter.CreateConstructor = false
+	converter.BackupDir = ""
+
+	_, err := converter.Convert(nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Duplicate type: Person")
+}
+
 func TestTypescriptifyWithGenericTypes(t *testing.T) {
 	t.Parallel()
 	converter := New().WithConfiguration(Configuration{

@@ -99,6 +99,8 @@ type TypeScriptify struct {
 
 	// throwaway, used when converting
 	alreadyConverted map[reflect.Type]bool
+	// throwaway, used when converting and `Configuration.ErrorOnDuplicateNames = true`
+	alreadyConvertedNames map[string]bool
 }
 
 type Configuration struct {
@@ -118,6 +120,10 @@ type Configuration struct {
 	// 		GenDummy GenericField[Dummy]   `json:"genDummy,omitempty"`
 	// 	}
 	GenericStructToFieldMapping map[string]string
+
+	// ErrorOnDuplicateNames will return an error when there are duplicates names of symbols.
+	// Typescript interfaces actually support multiple interfaces with the same name, but a warning can be helpful in certain operations
+	ErrorOnDuplicateNames bool
 }
 
 // GetChildFieldFromGenericParent returns empty string if not found
@@ -376,6 +382,7 @@ func (t *TypeScriptify) Convert(customCode map[string]string) (string, error) {
 	}
 
 	t.alreadyConverted = make(map[reflect.Type]bool)
+	t.alreadyConvertedNames = make(map[string]bool)
 	depth := 0
 
 	result := ""
@@ -603,27 +610,13 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type, customCode m
 	if _, found := t.alreadyConverted[typeOf]; found { // Already converted
 		return "", nil
 	}
+	if _, found := t.alreadyConvertedNames[typeOf.Name()]; found && t.Configuration.ErrorOnDuplicateNames { // Duplicate name
+		return "", fmt.Errorf("Duplicate type: %s", typeOf.Name())
+	}
 	t.logf(depth, "Converting type %s", typeOf.String())
 
-	// childFieldName := t.Configuration.GetChildFieldFromGenericParent(typeOf.String())
-	// // Whenever `isGenericStructWithConfigMapping` is true, it means we want to write down nothing about the current type
-	// // instead we want this call to directly act on it's childField
-	// isGenericStructWithConfigMapping := typeOf.Kind() == reflect.Struct && isStringOfGenericStruct(typeOf.String()) && childFieldName != ""
-	// if isGenericStructWithConfigMapping {
-	// 	// We will use one of the child's type instead
-	// 	fields := deepFields(typeOf)
-	// 	for _, field := range fields {
-	// 		if field.Name == childFieldName && field.Type.Kind() == reflect.Struct {
-	// 			// TODO: Make sure we properly handle field
-	// 			return t.convertType(depth, field.Type, customCode)
-	// 		} else if field.Name == childFieldName {
-	// 			// If it's not a struct we don't need to do anything
-	// 			return "", nil
-	// 		}
-	// 	}
-	// } else {
+	t.alreadyConvertedNames[typeOf.Name()] = true
 	t.alreadyConverted[typeOf] = true
-	// }
 
 	entityName := t.Prefix + typeOf.Name() + t.Suffix
 	result := ""
