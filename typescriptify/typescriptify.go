@@ -100,7 +100,7 @@ type TypeScriptify struct {
 	// throwaway, used when converting
 	alreadyConverted map[reflect.Type]bool
 	// throwaway, used when converting and `Configuration.ErrorOnDuplicateNames = true`
-	alreadyConvertedNames map[string]bool
+	alreadyConvertedNames map[string]string
 }
 
 type Configuration struct {
@@ -382,7 +382,7 @@ func (t *TypeScriptify) Convert(customCode map[string]string) (string, error) {
 	}
 
 	t.alreadyConverted = make(map[reflect.Type]bool)
-	t.alreadyConvertedNames = make(map[string]bool)
+	t.alreadyConvertedNames = make(map[string]string)
 	depth := 0
 
 	result := ""
@@ -610,12 +610,12 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type, customCode m
 	if _, found := t.alreadyConverted[typeOf]; found { // Already converted
 		return "", nil
 	}
-	if _, found := t.alreadyConvertedNames[typeOf.Name()]; found && t.Configuration.ErrorOnDuplicateNames { // Duplicate name
-		return "", fmt.Errorf("Duplicate type: %s", typeOf.Name())
+	if typeString, found := t.alreadyConvertedNames[typeOf.Name()]; found && t.Configuration.ErrorOnDuplicateNames { // Duplicate name
+		return "", fmt.Errorf("Duplicate type: %s (%s and %s)", typeOf.Name(), typeString, typeOf.String())
 	}
 	t.logf(depth, "Converting type %s", typeOf.String())
 
-	t.alreadyConvertedNames[typeOf.Name()] = true
+	t.alreadyConvertedNames[typeOf.Name()] = typeOf.String()
 	t.alreadyConverted[typeOf] = true
 
 	entityName := t.Prefix + typeOf.Name() + t.Suffix

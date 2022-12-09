@@ -75,7 +75,7 @@ func TestTypescriptifyWithDuplicateNames(t *testing.T) {
 
 	_, err := converter.Convert(nil)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Duplicate type: Person")
+	assert.Contains(t, err.Error(), "Duplicate type: Person (typescriptify.Person and models.Person)")
 }
 
 func TestTypescriptifyWithGenericTypes(t *testing.T) {
