@@ -4,9 +4,10 @@
 
 This is a fork of the https://github.com/tkrajina/typescriptify-golang-structs repository. We forked the repository due to it's low activity and our need to support a case in our codebase. We use a certain Generic structure to determine if the JSON was set or not in `POST`/`PATCH` API calls, this causes malformed typescript conversions if not handled correctly.
 
-We've added the possibility to set a configuration with currently only one field:
+We've added the possibility to set a configuration with the following fields:
 
 - `GenericStructToFieldMapping` - A map containing relationships between generic structs and which field should replace it in the output. See example below on how to use it.
+-  `ErrorOnDuplicateNames` - If set to true, an error will be generated if there are duplicate names in the generated class/interfaces
 
 ## Installation
 
